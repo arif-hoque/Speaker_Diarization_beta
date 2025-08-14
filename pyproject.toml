@@ -15,13 +15,14 @@ pydantic = "^2.4.2"
 pydantic-settings = "^2.0.3"
 python-dotenv = "^1.0.0"
 
-# Core dependencies from original project
-torch = "==2.3.1"
-torchvision = ">=0.15.2"
-torchtext = ">=0.15.2"
+# Core dependencies from original project - GPU accelerated versions
+torch = "==2.3.1"  # Exact version to match pre-installed PyTorch
+torchvision = "==0.18.1"  # Use compatible version available for cu121
+torchaudio = "==2.3.1"  # Use compatible version available for cu121
+# torchtext not needed for diarization functionality
 numpy = "==1.26.4"
 requests = "^2.31.0"
-pyannote.audio = ">=3.3.1"
+"pyannote.audio" = ">=3.3.1"
 faster-whisper = "==1.1.1"
 ctranslate2 = "==4.5.0"
 tenacity = "^8.2.3"
@@ -72,6 +73,5 @@ warn_no_return = true
 warn_unreachable = true
 disallow_untyped_decorators = true
 disallow_incomplete_defs = true
-disallow_untyped_defs = true
 disallow_untyped_calls = true
 no_implicit_reexport = true

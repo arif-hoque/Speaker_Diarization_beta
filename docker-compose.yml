@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-diarization
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./diarization_output:/app/diarization_output
+      - ./transcript_output:/app/transcript_output
+      - ./static/uploads:/app/static/uploads
+    environment:
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
+      - DEBUG=${DEBUG:-false}
+      - HOST=0.0.0.0
+      - PORT=5000
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -67,7 +67,7 @@ async def shutdown_event():
 
 # Include routers
 app.include_router(diarization.router, prefix="/api/diarization", tags=["diarization"])
-app.include_router(gpu_test.router, prefix="/api", tags=["gpu-testing"])
+app.include_router(gpu_test.router, prefix="/api/gpu-test", tags=["GPU Testing"])
 
 @app.get("/")
 async def root():

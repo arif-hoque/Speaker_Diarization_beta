@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from ..libs.gpu_reporter import GPUReporter
 from ..config import settings
 
-router = APIRouter(prefix="/gpu-test", tags=["GPU Testing"])
+router = APIRouter(tags=["GPU Testing"])
 
 # Initialize GPU reporter
 gpu_reporter = GPUReporter(reports_dir=settings.GPU_REPORTS_DIR)

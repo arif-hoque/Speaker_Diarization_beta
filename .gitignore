@@ -149,3 +149,5 @@ temp/
 # Model cache
 .cache/
 models/
+
+gpu_reports/

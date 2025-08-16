@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends
 from typing import Optional
 import os
 import logging
@@ -7,14 +7,12 @@ import shutil
 import uuid
 
 from ..services.diarization_service import DiarizationService
+from ..core.dependencies import get_diarization_service
 from ..config import settings
 from ..schemas.diarization import DiarizationResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Initialize diarization service
-diarization_service = DiarizationService()
 
 
 @router.post("/process", response_model=DiarizationResponse)
@@ -25,6 +23,7 @@ async def process_audio(
     language: Optional[str] = None,
     translate: bool = False,
     prompt: str = "",
+    service: DiarizationService = Depends(get_diarization_service)
 ):
     """
     Process an audio file for diarization and transcription.
@@ -70,7 +69,7 @@ async def process_audio(
             shutil.copyfileobj(file.file, buffer)
         
         # Process the file
-        result = diarization_service.process_audio(
+        result = service.process_audio(
             file_path=file_path,
             num_speakers=num_speakers,
             language=language,

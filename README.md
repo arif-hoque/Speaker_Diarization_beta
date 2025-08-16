@@ -55,6 +55,17 @@ docker run --gpus all -p 5000:5000 \
   -v $(pwd)/static/uploads:/app/static/uploads \
   --env-file .env \
   fastapi-diarization
+
+
+# Run the container with GPU support and hot reload
+docker run --gpus all -p 5000:5000 \
+  -v $(pwd)/diarization_output:/app/diarization_output \
+  -v $(pwd)/transcript_output:/app/transcript_output \
+  -v $(pwd)/static/uploads:/app/static/uploads \
+  -v $(pwd)/app:/app/app \
+  --env-file .env \
+  fastapi-diarization \
+  uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
 ### 4. Or run locally with Poetry

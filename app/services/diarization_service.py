@@ -4,6 +4,7 @@ import logging
 import torch
 import torchaudio
 import subprocess
+import concurrent.futures
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -46,7 +47,7 @@ class DiarizationService:
         prompt: str = ""
     ) -> Dict[str, Any]:
         """
-        Process an audio file for diarization and transcription.
+        Process an audio file for diarization and transcription with parallel processing.
         
         Args:
             file_path: Path to the audio file
@@ -57,6 +58,81 @@ class DiarizationService:
             
         Returns:
             Dictionary containing diarization and transcription results
+        """
+        start_time = time.time()
+        
+        try:
+            # Convert audio to WAV format if needed
+            conversion_start = time.time()
+            wav_path = self._convert_to_wav(file_path)
+            conversion_time = time.time() - conversion_start
+            logger.info(f"Audio conversion completed in {conversion_time:.2f} seconds")
+            
+            # Process diarization and transcription in parallel
+            parallel_start = time.time()
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                # Submit both tasks simultaneously
+                logger.info("Starting parallel diarization and transcription...")
+                
+                diarization_future = executor.submit(
+                    self._diarize_audio, wav_path, num_speakers
+                )
+                transcription_future = executor.submit(
+                    self._transcribe_audio, wav_path, language, translate, prompt
+                )
+                
+                # Wait for both to complete
+                diarization_result = diarization_future.result()
+                transcription_result = transcription_future.result()
+            
+            parallel_time = time.time() - parallel_start
+            logger.info(f"Parallel processing completed in {parallel_time:.2f} seconds")
+            
+            # Combine results
+            combine_start = time.time()
+            result = self._combine_results(
+                diarization_result,
+                transcription_result,
+                language
+            )
+            combine_time = time.time() - combine_start
+            logger.info(f"Result combination completed in {combine_time:.2f} seconds")
+            
+            # Clean up temporary WAV file if it was created
+            if wav_path != file_path:
+                os.remove(wav_path)
+            
+            total_processing_time = time.time() - start_time
+            logger.info(f"Total processing completed in {total_processing_time:.2f} seconds")
+            logger.info(f"Performance breakdown - Conversion: {conversion_time:.1f}s, "
+                       f"Parallel: {parallel_time:.1f}s, Combine: {combine_time:.1f}s")
+            
+            # Add timing information to result
+            result['processing_times'] = {
+                'total': total_processing_time,
+                'conversion': conversion_time,
+                'parallel_processing': parallel_time,
+                'combination': combine_time
+            }
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing audio: {str(e)}", exc_info=True)
+            raise
+    
+    def process_audio_sequential(
+        self,
+        file_path: str,
+        num_speakers: Optional[int] = None,
+        language: Optional[str] = None,
+        translate: bool = False,
+        prompt: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Process an audio file for diarization and transcription sequentially (original method).
+        Kept for comparison purposes.
         """
         start_time = time.time()
         
@@ -87,7 +163,7 @@ class DiarizationService:
                 os.remove(wav_path)
             
             processing_time = time.time() - start_time
-            logger.info(f"Processing completed in {processing_time:.2f} seconds")
+            logger.info(f"Sequential processing completed in {processing_time:.2f} seconds")
             
             return result
             
@@ -161,37 +237,54 @@ class DiarizationService:
         translate: bool = False,
         prompt: str = ""
     ) -> Dict[str, Any]:
-        """Transcribe audio using Whisper"""
+        """Transcribe audio using Whisper with optimized VAD settings for call recordings"""
         logger.info("Starting transcription...")
         start_time = time.time()
         
-        # Run Whisper model
-        segments, info = self.whisper_model.transcribe(
-            audio_path,
+        # Import VAD options (should be available in container)
+        from faster_whisper.vad import VadOptions
+        
+        # Optimized transcription options for call recordings between two people
+        options = dict(
             language=language,
-            task="translate" if translate else "transcribe",
-            initial_prompt=prompt,
+            beam_size=5,  # Good balance of speed and accuracy
+            vad_filter=True,
+            vad_parameters=VadOptions(
+                max_speech_duration_s=30.0,  # Reasonable max for call segments
+                min_speech_duration_ms=100,  # Filter very short segments
+                speech_pad_ms=100,  # Small padding for speech boundaries
+                threshold=0.25,  # Optimized for call quality audio
+                neg_threshold=0.2,  # Good for detecting silence in calls
+            ),
             word_timestamps=True,
-            vad_filter=True
+            initial_prompt=prompt,
+            language_detection_segments=1,  # Minimal language detection for speed
+            task="translate" if translate else "transcribe",
         )
         
-        # Convert to list of segments
-        result_segments = []
-        for segment in segments:
-            result_segments.append({
-                'start': segment.start,
-                'end': segment.end,
-                'text': segment.text.strip(),
-                'words': [
+        # Run Whisper model with optimized parameters
+        segments, info = self.whisper_model.transcribe(audio_path, **options)
+        
+        # Convert segments to list and extract detailed information
+        segments = list(segments)
+        result_segments = [
+            {
+                "avg_logprob": s.avg_logprob,  # Quality metric
+                "start": float(s.start),
+                "end": float(s.end),
+                "text": s.text.strip(),
+                "words": [
                     {
-                        'word': word.word,
-                        'start': word.start,
-                        'end': word.end,
-                        'probability': word.probability
+                        "start": float(w.start),
+                        "end": float(w.end),
+                        "word": w.word,
+                        "probability": w.probability,
                     }
-                    for word in segment.words or []
+                    for w in s.words or []
                 ]
-            })
+            }
+            for s in segments
+        ]
         
         transcription_time = time.time() - start_time
         logger.info(f"Transcription completed in {transcription_time:.2f} seconds")
@@ -200,7 +293,8 @@ class DiarizationService:
             'segments': result_segments,
             'language': info.language,
             'language_probability': info.language_probability,
-            'duration': info.duration
+            'duration': info.duration,
+            'avg_logprob': sum(s.avg_logprob for s in segments) / len(segments) if segments else 0.0
         }
     
     def _combine_results(

@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     
     # Allowed file extensions
     ALLOWED_EXTENSIONS: set = {"wav", "mp3", "ogg", "flac", "m4a"}
+    
+    # GPU Monitoring settings
+    GPU_MONITORING_ENABLED: bool = os.getenv("GPU_MONITORING_ENABLED", "True").lower() in ("true", "1", "t")
+    GPU_MONITORING_INTERVAL: float = float(os.getenv("GPU_MONITORING_INTERVAL", "0.5"))
+    GPU_REPORTS_DIR: str = os.path.join(BASE_DIR, "gpu_reports")
 
     class Config:
         env_file = ".env"

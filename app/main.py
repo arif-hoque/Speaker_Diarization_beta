@@ -11,16 +11,22 @@ import time
 import json
 
 from .routers import diarization
+from .routers import gpu_test
 from .config import settings
+from .services.diarization_service import DiarizationService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global service instance - will be loaded at startup
+diarization_service = None
+
 # Create necessary directories
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(settings.DIARIZATION_OUTPUT_DIR, exist_ok=True)
 os.makedirs(settings.TRANSCRIPT_OUTPUT_DIR, exist_ok=True)
+os.makedirs(settings.GPU_REPORTS_DIR, exist_ok=True)
 
 app = FastAPI(
     title="Audio Diarization API",
@@ -40,8 +46,28 @@ app.add_middleware(
 # Mount static files directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.on_event("startup")
+async def startup_event():
+    """Load models at application startup"""
+    global diarization_service
+    logger.info("Loading models at application startup...")
+    try:
+        diarization_service = DiarizationService()
+        logger.info("Models loaded successfully at startup")
+    except Exception as e:
+        logger.error(f"Failed to load models at startup: {e}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on application shutdown"""
+    global diarization_service
+    logger.info("Application shutting down...")
+    diarization_service = None
+
 # Include routers
 app.include_router(diarization.router, prefix="/api/diarization", tags=["diarization"])
+app.include_router(gpu_test.router, prefix="/api", tags=["gpu-testing"])
 
 @app.get("/")
 async def root():
@@ -49,7 +75,12 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    global diarization_service
+    return {
+        "status": "healthy",
+        "models_loaded": diarization_service is not None,
+        "gpu_monitoring_enabled": settings.GPU_MONITORING_ENABLED
+    }
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=5000, reload=True)
